@@ -13,8 +13,14 @@ esp-backtrace = { version = "0.13.0", features = [
     "println",
 ] }
 esp-hal = { version = "0.19.0", features = [ "esp32c3" ] }
+esp-hal-embassy = { version = "0.2.0", features = [ "esp32c3", "integrated-timers"] }
+embassy-executor =  { version = "0.5.0" }
+embedded-hal-bus = { version = "0.2.0" }
 esp-println = { version = "0.10.0", features = ["esp32c3", "log"] }
 log = { version = "0.4.21" }
+embassy-time = "0.3.2"
+static_cell         = { version = "2.1.0", features = ["nightly"] }
+
 [profile.dev]
 # Rust debug is too slow.
 # For debug builds always builds with some optimization
