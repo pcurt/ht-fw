@@ -12,14 +12,17 @@ esp-backtrace = { version = "0.13.0", features = [
     "panic-handler",
     "println",
 ] }
-esp-hal = { version = "0.19.0", features = [ "esp32c3" ] }
+esp-hal = { version = "0.19.0", features = ["async", "esp32c3"]}
 esp-hal-embassy = { version = "0.2.0", features = [ "esp32c3", "integrated-timers"] }
 embassy-executor =  { version = "0.5.0" }
 embedded-hal-bus = { version = "0.2.0" }
+embedded-io         = { version = "0.6.1", default-features = false }
 esp-println = { version = "0.10.0", features = ["esp32c3", "log"] }
 log = { version = "0.4.21" }
-embassy-time = "0.3.2"
+embassy-time = "0.3.0"
 static_cell         = { version = "2.1.0", features = ["nightly"] }
+embedded-cli = "0.2.1"
+nb = "1.1.0"
 
 [profile.dev]
 # Rust debug is too slow.

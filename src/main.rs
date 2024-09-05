@@ -1,6 +1,7 @@
 #![no_std]
 #![no_main]
-
+mod cli;
+use cli::set_speed;
 use embassy_executor::Spawner;
 use embassy_time::{Duration, Instant, Timer};
 use esp_backtrace as _;
@@ -12,8 +13,8 @@ use esp_hal::{
     prelude::*,
     system::SystemControl,
     timer::{timg::TimerGroup, ErasedTimer, OneShotTimer},
+    uart::Uart,
 };
-use esp_println::println;
 
 // When you are okay with using a nightly compiler it's better to use https://docs.rs/static_cell/2.1.0/static_cell/macro.make_static.html
 macro_rules! mk_static {
@@ -75,14 +76,15 @@ async fn compute_speed(analog_pin: GpioPin<3>, adc: ADC1) {
 
             // Update last time change
             last_time_change_s = current_time_s;
-            println!("SPEED_IS {:?};\r", speed_km_h);
+            set_speed(speed_km_h * 10);
         }
 
         // If wheel is not mooving since more than x seconds send a 0kms speed
         if (Instant::now().as_secs() - last_time_change_s.as_secs()) > 2 && !stop_is_sent {
             stop_is_sent = true;
-            println!("SPEED_IS: 0;\r");
+            set_speed(0);
         }
+        Timer::after(Duration::from_millis(1)).await;
     }
 }
 
@@ -102,9 +104,14 @@ async fn main(spawner: Spawner) {
 
     let io = Io::new(peripherals.GPIO, peripherals.IO_MUX);
 
+    // Start compute_speed task
     spawner
         .spawn(compute_speed(io.pins.gpio3, peripherals.ADC1))
         .ok();
+
+    // Start the CLI task
+    let serial0 = Uart::new(peripherals.UART0, &clocks, io.pins.gpio21, io.pins.gpio20).unwrap();
+    spawner.spawn(cli::cli_run(serial0)).ok();
 
     loop {
         // Nothing to do for the moment
