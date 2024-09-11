@@ -3,7 +3,7 @@
 mod cli;
 use core::cell::RefCell;
 
-use cli::set_speed;
+use cli::{get_force, set_speed};
 use critical_section::Mutex;
 use embassy_executor::Spawner;
 use embassy_time::{Duration, Instant, Timer};
@@ -11,6 +11,7 @@ use esp_backtrace as _;
 use esp_hal::{
     clock::ClockControl,
     gpio::{GpioPin, Input, Io, Pull},
+    ledc::{channel, timer, LSGlobalClkSource, Ledc, LowSpeed},
     peripherals::Peripherals,
     prelude::*,
     system::SystemControl,
@@ -84,6 +85,31 @@ async fn main(spawner: Spawner) {
     )
     .unwrap();
 
+    let force = io.pins.gpio0;
+
+    let mut forcec = Ledc::new(peripherals.LEDC, &clocks);
+
+    forcec.set_global_slow_clock(LSGlobalClkSource::APBClk);
+
+    let mut lstimer0 = forcec.get_timer::<LowSpeed>(timer::Number::Timer0);
+
+    lstimer0
+        .configure(timer::config::Config {
+            duty: timer::config::Duty::Duty5Bit,
+            clock_source: timer::LSClockSource::APBClk,
+            frequency: 16.kHz(),
+        })
+        .unwrap();
+
+    let mut channel0 = forcec.get_channel(channel::Number::Channel0, force);
+    channel0
+        .configure(channel::config::Config {
+            timer: &lstimer0,
+            duty_pct: 10,
+            pin_config: channel::config::PinConfig::PushPull,
+        })
+        .unwrap();
+
     spawner.spawn(detect_dial(dial)).unwrap();
 
     // Start the CLI task
@@ -96,6 +122,7 @@ async fn main(spawner: Spawner) {
 
     loop {
         let cnt = critical_section::with(|cs| *COUNTER.borrow_ref(cs));
+
         if cnt != prev_cnt {
             // we are mooving
             let distance: u64 = cnt - prev_cnt;
@@ -118,6 +145,8 @@ async fn main(spawner: Spawner) {
             set_speed(0);
         }
 
+        // Update the force
+        let _ = channel0.set_duty(100 - get_force());
         Timer::after(Duration::from_millis(20)).await;
     }
 }

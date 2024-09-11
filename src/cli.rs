@@ -1,5 +1,5 @@
 use core::convert::Infallible;
-use core::sync::atomic::{AtomicU32, Ordering};
+use core::sync::atomic::{AtomicU32, AtomicU8, Ordering};
 use embassy_time::{Duration, Timer};
 use embedded_cli::cli::CliBuilder;
 use embedded_cli::Command;
@@ -11,11 +11,16 @@ use esp_println::println;
 // SPEED in 0,1 km/h
 static SPEED: AtomicU32 = AtomicU32::new(0);
 // FORCE
-static FORCE: AtomicU32 = AtomicU32::new(0);
+static FORCE: AtomicU8 = AtomicU8::new(0);
 
 // Fonction setter pour modifier la variable
 pub fn set_speed(new_sped: u32) {
     SPEED.store(new_sped, Ordering::Relaxed);
+}
+
+// Fonction setter pour modifier la variable
+pub fn get_force() -> u8 {
+    FORCE.load(Ordering::Relaxed)
 }
 
 #[derive(Command)]
@@ -90,7 +95,13 @@ fn handle_force_command(command: ForceCommand) -> Result<(), Infallible> {
             match resultat {
                 // Force is a float between 0 and 20
                 // Multiply it by 100 to have an integer
-                Ok(read_force) => FORCE.store((read_force * 100.0) as u32, Ordering::Relaxed),
+                Ok(read_force) => {
+                    let mut duty: u8 = read_force as u8 * 5;
+                    if duty > 100 {
+                        duty = 100;
+                    }
+                    FORCE.store(duty, Ordering::Relaxed);
+                }
                 Err(e) => println!("Not a float : {}", e),
             }
         }
