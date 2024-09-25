@@ -76,8 +76,11 @@ fn handle_speed_command(command: SpeedCommand) -> Result<(), Infallible> {
     match command {
         SpeedCommand::Get => {
             let shared_speed = SPEED.load(Ordering::Relaxed);
-            let speed_km_h: f32 = shared_speed as f32 / 10.0;
-            println!("speed {}", speed_km_h);
+            let mut speed_km_h: f32 = 0.0;
+            if shared_speed > 5 && shared_speed < 260 {
+                speed_km_h = shared_speed as f32 / 4.3;
+            }
+            println!("speed {:.1}", speed_km_h);
         }
     }
     Ok(())
