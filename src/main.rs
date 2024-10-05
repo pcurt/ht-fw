@@ -15,21 +15,11 @@ use esp_hal::{
     peripherals::Peripherals,
     prelude::*,
     system::SystemControl,
-    timer::{timg::TimerGroup, ErasedTimer, OneShotTimer},
+    timer::timg::TimerGroup,
     uart::Uart,
 };
 
 static COUNTER: Mutex<RefCell<u64>> = Mutex::new(RefCell::new(0));
-
-// When you are okay with using a nightly compiler it's better to use https://docs.rs/static_cell/2.1.0/static_cell/macro.make_static.html
-macro_rules! mk_static {
-    ($t:ty,$val:expr) => {{
-        static STATIC_CELL: static_cell::StaticCell<$t> = static_cell::StaticCell::new();
-        #[deny(unused_attributes)]
-        let x = STATIC_CELL.uninit().write(($val));
-        x
-    }};
-}
 
 #[main]
 async fn main(spawner: Spawner) {
@@ -38,11 +28,8 @@ async fn main(spawner: Spawner) {
     let peripherals = Peripherals::take();
     let system = SystemControl::new(peripherals.SYSTEM);
     let clocks = ClockControl::boot_defaults(system.clock_control).freeze();
-    let timg0 = TimerGroup::new(peripherals.TIMG0, &clocks, None);
-    let timer0 = OneShotTimer::new(timg0.timer0.into());
-    let timers = [timer0];
-    let timers = mk_static!([OneShotTimer<ErasedTimer>; 1], timers);
-    esp_hal_embassy::init(&clocks, timers);
+    let timg0 = TimerGroup::new(peripherals.TIMG0, &clocks);
+    esp_hal_embassy::init(&clocks, timg0.timer0);
 
     let io = Io::new(peripherals.GPIO, peripherals.IO_MUX);
     let dial_io = io.pins.gpio4;
