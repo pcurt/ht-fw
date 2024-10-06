@@ -1,12 +1,10 @@
 #![no_std]
 #![no_main]
 mod cli;
-use core::cell::RefCell;
 
 use cli::{get_force, set_speed};
-use critical_section::Mutex;
 use embassy_executor::Spawner;
-use embassy_time::{Duration, Instant, Timer};
+use embassy_time::{with_timeout, Duration, Instant, Timer};
 use esp_backtrace as _;
 use esp_hal::{
     clock::ClockControl,
@@ -18,8 +16,6 @@ use esp_hal::{
     timer::timg::TimerGroup,
     uart::Uart,
 };
-
-static COUNTER: Mutex<RefCell<u64>> = Mutex::new(RefCell::new(0));
 
 #[main]
 async fn main(spawner: Spawner) {
@@ -33,7 +29,7 @@ async fn main(spawner: Spawner) {
 
     let io = Io::new(peripherals.GPIO, peripherals.IO_MUX);
     let dial_io = io.pins.gpio4;
-    let dial: Input<'_, GpioPin<4>> = Input::new(dial_io, Pull::None);
+    let dial: Input<'_, GpioPin<4>> = Input::new(dial_io, Pull::Up);
     esp_hal::interrupt::enable(
         esp_hal::peripherals::Interrupt::GPIO,
         esp_hal::interrupt::Priority::Priority1,
@@ -71,22 +67,7 @@ async fn main(spawner: Spawner) {
     let serial0 = Uart::new(peripherals.UART0, &clocks, io.pins.gpio21, io.pins.gpio20).unwrap();
     spawner.spawn(cli::cli_run(serial0)).ok();
 
-    let mut prev_cnt: u64 = 0;
-    let mut last_time_change_s = Instant::now();
-
     loop {
-        let cnt = critical_section::with(|cs| *COUNTER.borrow_ref(cs));
-
-        if cnt != prev_cnt {
-            // we are mooving
-            prev_cnt = cnt;
-            last_time_change_s = Instant::now();
-        }
-        // If wheel is not mooving since more than 800ms send a 0kms speed
-        if (Instant::now().as_millis() - last_time_change_s.as_millis()) > 800 {
-            set_speed(0);
-        }
-
         // Update the force
         let _ = channel0.set_duty(100 - (get_force()));
         Timer::after(Duration::from_millis(100)).await;
@@ -95,26 +76,50 @@ async fn main(spawner: Spawner) {
 
 #[embassy_executor::task]
 async fn detect_dial(mut dial: Input<'static, GpioPin<4>>) {
-    let mut last_time_change_s = Instant::now();
-    let mut prev_cnt: u64 = 0;
-    let mut cnt: u64 = 0;
-    loop {
-        dial.wait_for_any_edge().await;
+    let mut zero_count = 0;
+    let mut last_non_zero_speed = 0;
+    let timeout_duration = Duration::from_secs(1); // 5 second timeout
 
-        cnt = cnt + 1;
-        if (cnt - prev_cnt) > 100 {
-            // Update the speed
-            let current_time_s = Instant::now();
-            let delta_t_us = current_time_s.as_micros() - last_time_change_s.as_micros();
-            let speed_raw = 10_000_000 / delta_t_us;
-            last_time_change_s = current_time_s;
-            prev_cnt = cnt;
-            // drop the wrong sensor measures
-            if 2_000_000 > delta_t_us {
-                critical_section::with(|cs| {
-                    *COUNTER.borrow_ref_mut(cs) += 1;
-                });
-                set_speed(speed_raw as u32);
+    loop {
+        // Wait for the dial to go high (rising edge) with a timeout
+        match with_timeout(timeout_duration, dial.wait_for_high()).await {
+            Ok(_) => {
+                let start = Instant::now();
+                // Wait for the dial to go low (falling edge) with a timeout
+                match with_timeout(timeout_duration, dial.wait_for_low()).await {
+                    Ok(_) => {
+                        let duration = start.elapsed();
+                        // Debounce: Ignore any pulses shorter than 1000 microseconds
+                        if duration.as_micros() >= 1000 {
+                            let speed: f32 = 29700.0 / duration.as_micros() as f32;
+                            let scaled_speed = (speed * 1000.0) as u32;
+
+                            if speed == 0.000 {
+                                zero_count += 1;
+                                if zero_count >= 5 {
+                                    set_speed(0);
+                                    last_non_zero_speed = 0;
+                                } else {
+                                    set_speed(last_non_zero_speed);
+                                }
+                            } else {
+                                zero_count = 0;
+                                last_non_zero_speed = scaled_speed;
+                                set_speed(scaled_speed);
+                            }
+                        }
+                    }
+                    Err(_) => {
+                        // Timeout occurred while waiting for low
+                        set_speed(0);
+                        last_non_zero_speed = 0;
+                    }
+                }
+            }
+            Err(_) => {
+                // Timeout occurred while waiting for high
+                set_speed(0);
+                last_non_zero_speed = 0;
             }
         }
     }

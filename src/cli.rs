@@ -76,11 +76,8 @@ fn handle_speed_command(command: SpeedCommand) -> Result<(), Infallible> {
     match command {
         SpeedCommand::Get => {
             let shared_speed = SPEED.load(Ordering::Relaxed);
-            let mut speed_km_h: f32 = 0.0;
-            if shared_speed > 5 && shared_speed < 260 {
-                speed_km_h = shared_speed as f32 / 4.3;
-            }
-            println!("speed {:.1}", speed_km_h);
+            let speed_float: f32 = shared_speed as f32 / 1000.0;
+            println!("speed {:.3}", speed_float);
         }
     }
     Ok(())
@@ -90,8 +87,8 @@ fn handle_force_command(command: ForceCommand) -> Result<(), Infallible> {
     match command {
         ForceCommand::Get => {
             let shared_force = FORCE.load(Ordering::Relaxed);
-            let speed_km_float: f32 = shared_force as f32 / 100.0;
-            println!("force {}", speed_km_float);
+            let force_float: f32 = shared_force as f32 / 100.0;
+            println!("force {}", force_float);
         }
         ForceCommand::Set { value } => {
             let resultat: Result<f32, _> = value.parse();
