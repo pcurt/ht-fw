@@ -8,14 +8,14 @@ use esp_hal::uart::{Uart, UartTx};
 use esp_hal::Blocking;
 use esp_println::println;
 
-// SPEED in 0,1 km/h
+// Speed
 static SPEED: AtomicU32 = AtomicU32::new(0);
-// FORCE
+// Force
 static FORCE: AtomicU8 = AtomicU8::new(0);
 
 // Fonction setter pour modifier la variable
-pub fn set_speed(new_sped: u32) {
-    SPEED.store(new_sped, Ordering::Relaxed);
+pub fn set_speed(new_speed: u32) {
+    SPEED.store(new_speed, Ordering::Relaxed);
 }
 
 // Fonction setter pour modifier la variable
